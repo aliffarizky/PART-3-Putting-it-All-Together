@@ -1,7 +1,7 @@
-#include <SoftwareSerial.h>
-SoftwareSerial client(3,4);
-#define DEBUG true
-String latitude,longitude,snr,raw_gsm,gsm,imei,ip;
+#include <SoftwareSerial.h>  //include software serial library
+SoftwareSerial client(3,4); //Assigning TX(3) & RX(4) pin to the module
+#define DEBUG true //defining debug variable
+String latitude,longitude,snr,raw_gsm,gsm,imei,ip; 
 String payload;
 String data_gps[6];
 String data_snr[8];
@@ -11,50 +11,61 @@ String data_gsm[3];
 
 void setup() 
 {
-Serial.begin(9600);
-client.begin(9600);
+Serial.begin(9600); //begin serial on arduino side
+client.begin(9600); //begin serial on module side
 delay(500);
 
-connectGPRS();
-readIP();
-readIMEI();
+connectGPRS(); //Setup GPRS Connection
+readIP(); //Read the Ip from htttp://ipv4bot.whatismyipaddress.com 
+readIMEI(); //Read Module's Imei
+
+//Below is a sequence in case of reading IP and IMEI fails
+if (ip == "") //check if GET HTTP fail to read the IP
+  {
+    readIP(); //Read the IP
+  }
+if (imei == "") //check if Module Imei failed to be read
+  {
+    readIMEI(); //Read Module's Imei
+  }
 }
 
 void loop() {
-readGSM();
-readSNR();
-readGPS();
-payload = "{\"latitude\":\"" + latitude + "\",\"longitude\":\"" + longitude + "\",\"gps\":\"" + snr +"\",\"gsm\":\"" + gsm +"\",\"imei\":\""+ imei +"\",\"ip\":\"" + ip + "\"}";
-Serial.println(payload); 
+readGSM(); //Read GSM Signal Strength
+readSNR(); //Read GPS Signal Strength
+readGPS(); //Read GPS location
+
+payload = "{\"latitude\":\"" + latitude + "\",\"longitude\":\"" + longitude + "\",\"gps\":\"" + snr +"\",\"gsm\":\"" + gsm +"\",\"imei\":\""+ imei +"\",\"ip\":\"" + ip + "\"}"; //fill the payload
+Serial.println(payload); //print the payload 
 delay(1000);
-postHTTP();
+postHTTP(); //POST the payload to the endpoint
 delay(1000);
-clear_buf();
+clear_buf(); //clear the payload
 }
 
 //=========================================================READ GPS==========================================================================
 void readGPS()
 {
-  sendData("AT+CGPSPWR=1",1000,DEBUG);
+  sendData("AT+CGPSPWR=1",1000,DEBUG); //AT-Command to power up GPS Power
   delay(1000);
-  sendData("AT+CGPSSTATUS?",1000,DEBUG);
+  sendData("AT+CGPSSTATUS?",1000,DEBUG); //AT-Command to check GPS Status
   delay(1000);
-  sendGPSData("AT+CGNSINF",1000,DEBUG);
+  sendGPSData("AT+CGNSINF",1000,DEBUG); //AT-Command to display GPS Info (Including Location, Time, Etc) and parsing the GPS location
   delay(1000);
 }
 //=========================================================PARSE GPS====================================================================
 void sendGPSData(String command , const int timeout , boolean debug)
 {
-  client.println(command);
-  long int time = millis();
-  int i = 0;
+  client.println(command); //print the command to module
+  long int time = millis(); //Set timer for timeout
+  int i = 0; 
 
-  while((time+timeout) > millis()){
+  while((time+timeout) > millis()){ //while timeout is not exceeded
     while(client.available()){
-      char c = client.read();
+      char c = client.read(); //read modules respond
       delay(100);
-      if (c != ',') {
-         data_gps[i] +=c;
+      if (c != ',') { //parse modules respond with (,) as delimiter
+         data_gps[i] +=c; //add modules respond to string array
          delay(100);
       } else {
         i++;  
@@ -66,9 +77,9 @@ void sendGPSData(String command , const int timeout , boolean debug)
     }
   }exita:
   if (debug) {
-    latitude = data_gps[3];
+    latitude = data_gps[3]; //get parsed latitude from modules respond
     latitude.trim();
-    longitude = data_gps[4];
+    longitude = data_gps[4]; //get parsed longitude from modules respond
     longitude.trim();
   }
 }
@@ -76,23 +87,23 @@ void sendGPSData(String command , const int timeout , boolean debug)
 //=========================================================READ GPS STRENGTH====================================================================
 void readSNR()
 {
- sendSnrData("AT+CGPSINF=16",1000,DEBUG);
+ sendSnrData("AT+CGPSINF=16",1000,DEBUG); //AT-Command to display GPS Strength Info and parsing the GPS location ranged from 0-99dBHz, null when not tracking
  delay(3000);
 }
 
 //=========================================================PARSE GPS STRENGTH====================================================================
 void sendSnrData(String command , const int timeout , boolean debug)
 {
-  client.println(command);
-  long int time = millis();
+  client.println(command); //print the command to module
+  long int time = millis(); //Set timer for timeout
   int j = 0;
 
-  while((time+timeout) > millis()){
+  while((time+timeout) > millis()){ //while timeout is not exceeded
     while(client.available()){
-      char d = client.read();
+      char d = client.read(); //read modules respond
       delay(100);
-      if (d != ',') {
-         data_snr[j] +=d;
+      if (d != ',') { //parse modules respond with (,) as delimiter
+         data_snr[j] +=d; //add modules respond to string array
          delay(100);
       } else {
         j++;  
@@ -104,7 +115,7 @@ void sendSnrData(String command , const int timeout , boolean debug)
     }
   }exitb:
   if (debug) {
-    snr = data_snr[7];
+    snr = data_snr[7]; //get parsed gps strength from modules respond
     snr.trim();
   }
 }
@@ -112,23 +123,23 @@ void sendSnrData(String command , const int timeout , boolean debug)
 //=========================================================READ GSM====================================================================
 void readGSM()
 {
-  sendGsmData("AT+CSQ",1000,DEBUG);
+  sendGsmData("AT+CSQ",1000,DEBUG); //AT-Command to display GSM Signal Strength Info and parsing it. Ranged and conversed to 113 - 53 dBM, https://m2msupport.net/m2msupport/atcsq-signal-quality/
   delay(1000);
 }
 
 //=========================================================PARSE GSM====================================================================
 void sendGsmData(String command , const int timeout , boolean debug)
 {
-  client.println(command);
-  long int time = millis();
+  client.println(command); //print the command to module
+  long int time = millis(); //Set timer for timeout
   int k = 0;
 
-  while((time+timeout) > millis()){
+  while((time+timeout) > millis()){ //while timeout is not exceeded
     while(client.available()){
-      char e = client.read();
+      char e = client.read(); //read modules respond
       delay(100);
-      if (e != '\n') {
-         data_gsm[k] +=e;
+      if (e != '\n') { //parse modules respond with (\n) as delimiter
+         data_gsm[k] +=e; //add modules respond to string array
          delay(100);
       } else {
         k++;  
@@ -141,9 +152,9 @@ void sendGsmData(String command , const int timeout , boolean debug)
   }exitc:
   if (debug) {
     data_gsm[1].remove(0,6);
-    raw_gsm = data_gsm[1];
+    raw_gsm = data_gsm[1]; //get parsed gps strength from modules respond
     raw_gsm.trim();
-    gsm = (((raw_gsm.toInt()-1)*2) - 111);
+    gsm = (((raw_gsm.toInt()-1)*2) - 111); //conversing 0-99 value to (-113)-(-53) dBm, https://m2msupport.net/m2msupport/atcsq-signal-quality/
     gsm.trim();
   }
 }
@@ -151,39 +162,39 @@ void sendGsmData(String command , const int timeout , boolean debug)
 //=========================================================INIT GPRS====================================================================
 void connectGPRS()
 { 
-  sendData("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"",1000,DEBUG);
+  sendData("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"",1000,DEBUG); //AT-Command to declare Connection Type
   delay(1000);
 
-  sendData("AT+SAPBR=3,1,\"APN\",\"\"",1000,DEBUG);//APN
+  sendData("AT+SAPBR=3,1,\"APN\",\"\"",1000,DEBUG); //AT-Command to Enable APN Setting
   delay(1000);
 
-  sendData("AT+SAPBR=1,1",1000,DEBUG);
+  sendData("AT+SAPBR=1,1",1000,DEBUG); //AT-Command to enable GPRS and APN Setting
   delay(1000);
 
-  sendData("AT+SAPBR=2,1",1000,DEBUG);
+  sendData("AT+SAPBR=2,1",1000,DEBUG); //AT-Command to query GPRS context
   delay(1000);
 }
 
 //=========================================================READ IMEI====================================================================
 void readIMEI()
 {
-  sendImeiData("AT+CGSN",1000,DEBUG);
+  sendImeiData("AT+CGSN",1000,DEBUG); //AT-Command to display Imei Info and parsing it.
   delay(1000);
 }
 
 //=========================================================PARSE IMEI====================================================================
 void sendImeiData(String command , const int timeout , boolean debug)
 {
-  client.println(command);
-  long int time = millis();
+  client.println(command); //print the command to module
+  long int time = millis(); //Set timer for timeout
   int l = 0;
 
-  while((time+timeout) > millis()){
+  while((time+timeout) > millis()){ //while timeout is not exceeded
     while(client.available()){
-      char f = client.read();
+      char f = client.read(); //read modules respond
       delay(100);
-      if (f != '\n') {
-         data_imei[l] +=f;
+      if (f != '\n') { //parse modules respond with (\n) as delimiter
+         data_imei[l] +=f; //add modules respond to string array
          delay(100);
       } else {
         l++;  
@@ -195,7 +206,7 @@ void sendImeiData(String command , const int timeout , boolean debug)
     }
   }exitd:
   if (debug) {
-    imei = data_imei[1];
+    imei = data_imei[1]; //get parsed Imei from modules respond
     imei.trim();
   }
 }
@@ -203,34 +214,34 @@ void sendImeiData(String command , const int timeout , boolean debug)
 //=========================================================READ IP====================================================================
 void readIP()
 {
-  sendData("AT+HTTPINIT",1000,DEBUG);
+  sendData("AT+HTTPINIT",1000,DEBUG); //AT-Command to initialize HTTP
   delay(1000);
-  sendData("AT+HTTPPARA=\"URL\",\"http://ipv4bot.whatismyipaddress.com\"",1000,DEBUG);
+  sendData("AT+HTTPPARA=\"URL\",\"http://ipv4bot.whatismyipaddress.com\"",1000,DEBUG); //AR-Command Setting HTTP Parameter
   delay(1000);
-  sendData("AT+HTTPACTION=0",1000,DEBUG);
+  sendData("AT+HTTPACTION=0",1000,DEBUG); //AT-Command to Enable GET Action
+  delay(1000); 
+  sendData("AT+HTTPREAD=0,20",3000,DEBUG); //AT-Command to read HTTP GET respond and parsing it
   delay(1000);
-  sendData("AT+HTTPREAD=0,20",1000,DEBUG);
+  sendIpData("AT+HTTPREAD=0,20",3000,DEBUG); //AT-Command to read HTTP GET respond and parsing it
   delay(1000);
-  sendIpData("AT+HTTPREAD=0,20",3000,DEBUG);
-  delay(1000);
-  sendData("AT+HTTPTERM",1000,DEBUG);
+  sendData("AT+HTTPTERM",1000,DEBUG); //AT-Command to Terimnate HTTP Service
   delay(1000);
 }
 
 //=========================================================PARSE IP====================================================================
 void sendIpData(String command , const int timeout , boolean debug)
 {
-  client.println(command);
-  long int time = millis();
+  client.println(command); //print the command to module
+  long int time = millis(); //Set timer for timeout
   int m = 0;
 
-  while((time+timeout) > millis()){
-    while(client.available() > 0){
-      char g = client.read();
+  while((time+timeout) > millis()){ //while timeout is not exceeded
+    while(client.available() > 0){ 
+      char g = client.read(); //read modules respond
       delay(100);
-      if (g != '\n') 
+      if (g != '\n')  //parse modules respond with (\n) as delimiter
       {
-         data_ip[m] +=g;
+         data_ip[m] +=g; //add modules respond to string array
          delay(100);
       } else 
       {
@@ -246,7 +257,7 @@ void sendIpData(String command , const int timeout , boolean debug)
   exitd:
   if (debug) 
   {
-    ip = data_ip[2];
+    ip = data_ip[2]; //get parsed gps strength from modules respond
     ip.trim();
   }
 }
@@ -254,39 +265,34 @@ void sendIpData(String command , const int timeout , boolean debug)
 //=========================================================POST JSON====================================================================
 void postHTTP()
 { 
-  sendData("AT+HTTPINIT",1000,DEBUG);
+  sendData("AT+HTTPINIT",1000,DEBUG); //AT-Command to initialize HTTP
   delay(1000);
 
-  sendData("AT+HTTPPARA=\"CID\",1",1000,DEBUG);
-  delay(1000);
-
-  //client.println("AT+HTTPPARA=\"URL\",\"http://webhook.site/bad936b2-0fa1-48f2-ac12-74c58a8d91b5\"");//Public server address
-  //delay(1000);
-  //ShowSerialData();  
- 
+  sendData("AT+HTTPPARA=\"CID\",1",1000,DEBUG); //AT-Command to setting CID
+  delay(1000); 
   
-  sendData("AT+HTTPPARA=\"URL\",\"167.71.217.129:5000\"",1000,DEBUG);//Public server address
+  sendData("AT+HTTPPARA=\"URL\",\"167.71.217.129:5000\"",1000,DEBUG); //AT-Command Setting HTTP Parameter
   delay(1000);
   
-  sendData("AT+HTTPPARA=\"CONTENT\",\"application/json\"",1000,DEBUG);
+  sendData("AT+HTTPPARA=\"CONTENT\",\"application/json\"",1000,DEBUG); //AT-Command Setting Content Parameter
   delay(1000);
 
-  sendData("AT+HTTPDATA=" + String(payload.length()) + ",15000",1000,DEBUG);
+  sendData("AT+HTTPDATA=" + String(payload.length()) + ",15000",1000,DEBUG); //AT-Command Setting Payload Data Parameter
   delay(10000);
 
-  client.println(payload);
+  client.println(payload); //Send the payload to the module
   delay(1000);
 
-  sendData("AT+HTTPACTION=1",1000,DEBUG);
+  sendData("AT+HTTPACTION=1",1000,DEBUG); //AT-Command to Enable POST Action
   delay(1000);
 
-  sendData("AT+HTTPREAD",1000,DEBUG);
+  sendData("AT+HTTPREAD",1000,DEBUG); //AT-Command to read HTTP respond and parsing it
   delay(1000);
 
-  sendData("AT+HTTPTERM",1000,DEBUG);
+  sendData("AT+HTTPTERM",1000,DEBUG); //AT-Command to Terimnate HTTP Service
   delay(1000);
   
-  clear_buf();
+  clear_buf(); //Clear Payload
 }
 
 //=========================================================WRITE FUNCTION1====================================================================
@@ -302,31 +308,31 @@ void ShowSerialData()
 //=========================================================WRITE FUNCTION2====================================================================
 String sendData (String command , const int timeout ,boolean debug)
 {
-  String response = "";
+  String response = ""; //Clear modules respond
   delay(1000);
-  client.println(command);
+  client.println(command); //Print/Send Command to modules
   long int time = millis();
   int h = 0;
 
-  while ( (time+timeout ) > millis())
+  while ( (time+timeout ) > millis()) //While timeout not exceeded 
   {
     while (client.available())
     {
-      char b = client.read();
+      char b = client.read(); //Read the module's respond
       delay(100);
-      response +=b;
+      response +=b; //store the respond to variable
     }
   }
   if (debug) 
     {
-     Serial.print(response);
+     Serial.print(response); //Serial print the respond
      delay(100);
     }
      return response;
 }
 
 //==================================================Clear Serial=================================
-void clear_buf()
+void clear_buf() //Clear Payload
 {
   payload = "";
   latitude = "";
